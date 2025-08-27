@@ -1,0 +1,71 @@
+name: Build and Package User Management App
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    
+    strategy:
+      matrix:
+        os: [macos-latest, windows-latest, ubuntu-latest]
+        node-version: [18.x]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+      
+    - name: Use Node.js ${{ matrix.node-version }}
+      uses: actions/setup-node@v3
+      with:
+        node-version: ${{ matrix.node-version }}
+        cache: 'npm'
+        
+    - name: Install dependencies
+      run: npm ci
+      
+    - name: Build application
+      run: npm run build
+      
+    - name: Package for ${{ matrix.os }}
+      run: |
+        if [ "${{ matrix.os }}" = "macos-latest" ]; then
+          npx electron-packager . "User Management App" --platform=darwin --arch=arm64 --out=dist --overwrite
+        elif [ "${{ matrix.os }}" = "windows-latest" ]; then
+          npx electron-packager . "User Management App" --platform=win32 --arch=x64 --out=dist --overwrite
+        else
+          npx electron-packager . "User Management App" --platform=linux --arch=x64 --out=dist --overwrite
+        fi
+        
+    - name: Create distribution package
+      run: |
+        if [ "${{ matrix.os }}" = "macos-latest" ]; then
+          cd dist
+          hdiutil create -volname "User Management App" -srcfolder "User Management App-darwin-arm64" -ov -format UDZO "User Management App-1.0.0.dmg"
+        elif [ "${{ matrix.os }}" = "windows-latest" ]; then
+          cd dist
+          powershell -Command "Compress-Archive -Path 'User Management App-win32-x64' -DestinationPath 'User Management App-1.0.0-win.zip' -Force"
+        else
+          cd dist
+          tar -czf "User Management App-1.0.0-linux.tar.gz" "User Management App-linux-x64/"
+        fi
+        
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: User-Management-App-${{ matrix.os }}
+        path: dist/
+        
+    - name: Create Release
+      if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+      uses: softprops/action-gh-release@v1
+      with:
+        files: dist/**/*
+        draft: false
+        prerelease: false
+

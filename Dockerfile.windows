@@ -1,0 +1,50 @@
+# Multi-stage build for Windows application
+FROM node:18-alpine AS builder
+
+# Install build dependencies
+RUN apk add --no-cache python3 make g++ wine
+
+# Set working directory
+WORKDIR /app
+
+# Copy package files
+COPY package*.json ./
+
+# Install dependencies
+RUN npm ci
+
+# Copy source code
+COPY . .
+
+# Build the application
+RUN npm run build
+
+# Package for Windows
+RUN npx electron-packager . "User Management App" \
+    --platform=win32 \
+    --arch=x64 \
+    --out=dist \
+    --overwrite
+
+# Create Windows distribution
+RUN cd dist && \
+    zip -r "User Management App-1.0.0-win.zip" "User Management App-win32-x64/"
+
+# Final stage
+FROM alpine:latest
+
+# Install unzip for testing
+RUN apk add --no-cache unzip
+
+# Copy the built application
+COPY --from=builder /app/dist /dist
+
+# Set working directory
+WORKDIR /dist
+
+# Expose the output
+VOLUME ["/dist"]
+
+# Default command
+CMD ["sh", "-c", "ls -la && echo 'Windows build completed!'"]
+
